@@ -223,6 +223,250 @@ Tactic Notation "info_step!" :=
   | list_solve; idtac "list_solve."
   ].
 
+Ltac newstep :=
+  try (progress Intros; idtac "Intros.");
+  try (let x := fresh "x" in Intros x; idtac "Intros x.");
+  first
+  [ forward; idtac "forward."
+  | forward_if; idtac "forward_if."
+  | forward_call; idtac "forward_call."
+  ].
+
+Local Ltac ss' abc :=
+  first
+  [ progress Intros; idtac "Intros."
+  | let x := fresh "x" in Intros x; idtac "Intros x."
+  | forward; idtac "forward."
+  | forward_if; idtac "forward_if."
+  | forward_call; idtac "forward_call."
+  | progress simpl_implicit; idtac "simpl_implicit."
+  | match goal with |- _ |-- EX _, _ => EExists end; idtac "EExists."
+  | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
+  | progress autorewrite with sublist; idtac "autorewrite with sublist."
+  | progress autorewrite with norm; idtac "autorewrite with norm."
+  (*| match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."*)
+  | EExists_unify; idtac "EExists_unify"
+  | abc
+  ].
+
+Local Ltac ss'' abc :=
+  first
+  [ progress Intros; idtac "Intros."
+  | let x := fresh "x" in Intros x; idtac "Intros x."
+  | forward; idtac "forward."
+  | forward_if; idtac "forward_if."
+  | forward_call; idtac "forward_call."
+  | abc
+  | progress simpl_implicit; idtac "simpl_implicit."
+  | match goal with |- _ |-- EX _, _ => EExists end; idtac "EExists."
+  | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
+  | progress autorewrite with sublist; idtac "autorewrite with sublist."
+  | progress autorewrite with norm; idtac "autorewrite with norm."
+  | EExists_unify; idtac "EExists_unify"
+  | progress_entailer; idtac "progress_entailer."
+  | match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."
+  ].
+
+Local Ltac ss''' abc :=
+  first
+  [ progress Intros; idtac "Intros."
+  | let x := fresh "x" in Intros x; idtac "Intros x."
+  | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
+  | progress autorewrite with sublist; idtac "autorewrite with sublist."
+  | progress autorewrite with norm; idtac "autorewrite with norm."
+  | forward; idtac "forward."
+  | forward_if; idtac "forward_if."
+  | forward_call; idtac "forward_call."
+  | abc
+  | progress simpl_implicit; idtac "simpl_implicit."
+  | match goal with |- _ |-- EX _, _ => EExists end; idtac "EExists."
+  | EExists_unify; idtac "EExists_unify"
+  | progress_entailer; idtac "progress_entailer."
+  | match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."
+  ].
+
+Local Tactic Notation "ss" "with" tactic(custom_simpl) :=
+  ss' custom_simpl.
+
+Local Tactic Notation "ss!" "with" tactic(custom_simpl) :=
+  ss'' custom_simpl.
+
+Local Tactic Notation "ss!!" "with" tactic(custom_simpl) :=
+  ss''' custom_simpl.
+
+Tactic Notation "fastforward" "with" tactic(custom_simpl) :=
+  progress repeat match goal with
+  | |- semax _ _ _ _ => progress repeat (ss with custom_simpl)
+  | |- semax_body _ _ _ _ => start_function; idtac "start_function."
+  end.
+
+Tactic Notation "fastforward" :=
+  fastforward with fail.
+
+Tactic Notation "fastforward!" "with" tactic(custom_simpl) :=
+  progress repeat match goal with
+  | |- semax _ _ _ _ => progress repeat (ss! with custom_simpl)
+  | |- semax_body _ _ _ _ => start_function; idtac "start_function."
+  end.
+
+Tactic Notation "fastforward!" :=
+  fastforward! with fail.
+
+Tactic Notation "fastforward!!" "with" tactic(custom_simpl) :=
+  progress repeat match goal with
+  | |- semax _ _ _ _ => progress repeat (ss!! with custom_simpl)
+  | |- semax_body _ _ _ _ => start_function; idtac "start_function."
+  end.
+
+Tactic Notation "fastforward!!" :=
+  fastforward!! with fail.
+
+Local Ltac a :=
+  repeat first
+  [ progress simpl; idtac "simpl."
+  | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
+  | progress autorewrite with sublist; idtac "autorewrite with sublist."
+  | progress autorewrite with norm; idtac "autorewrite with norm. (finish'')"
+  ].
+
+Tactic Notation "simplify" "with" tactic(custom_simpl) :=
+  a; try custom_simpl;
+  match goal with
+  | |- context[if _ then _ else _] => if_tac; idtac "if_tac."
+  | |- _ |-- _ => (progress_entailer; idtac "progress_entailer.") + (entailer; idtac "progress_entailer + entailer.")
+  end;
+  a; try custom_simpl.
+
+Tactic Notation "simplify" :=
+  simplify with fail.
+
+Tactic Notation "simplify!" "with" tactic(custom_simpl) :=
+  repeat progress (a; try custom_simpl; (progress_entailer; idtac "progress_entailer.")).
+
+Tactic Notation "simplify!" :=
+  simplify! with fail.
+
+Local Ltac finish'' custom_simpl hintdb :=
+  try (intros; idtac "intros.");
+  (progress subst; idtac "subst.");
+  (progress simpl; idtac "simpl.");
+  match goal with
+  | |- @derives mpred _ _ _ => solve [cancel]; idtac "solve [cancel]."
+  | |- _ |-- _ => solve [entailer!]; idtac "solve [entailer!]."
+  | |- _ =>
+      first
+      [ rep_lia; idtac "rep_lia."
+      | Zlength_solve; idtac "Zlength_solve."
+      | list_solve; idtac "list_solve."
+      | progress auto with hintdb; idtac "auto."
+      ]
+  end.
+
+Local Ltac finish1'' custom_simpl hintdb :=
+  try (intros; idtac "intros.");
+  (progress subst; idtac "subst.");
+  simplify;
+  match goal with
+  | |- @derives mpred _ _ _ => solve [cancel]; idtac "solve [cancel]."
+  | |- _ |-- _ => solve [entailer!]; idtac "solve [entailer!]."
+  | |- _ =>
+      first
+      [ rep_lia; idtac "rep_lia."
+      | Zlength_solve; idtac "Zlength_solve."
+      | list_solve; idtac "list_solve."
+      | progress auto with hintdb; idtac "auto."
+      ]
+  end.
+
+Local Ltac finish' custom_simpl hintdb :=
+  try Intros;
+  lazymatch goal with
+  | |- _ |-- EX _, _ => first
+    [ EExists_unify; idtac "EExists_unify."
+    | EExists; idtac "EExists."
+    ]; finish'' custom_simpl hintdb
+  | |- _ => finish'' custom_simpl hintdb
+  end.
+
+Local Ltac finish1' custom_simpl hintdb :=
+  try Intros;
+  lazymatch goal with
+  | |- _ |-- EX _, _ => first
+    [ EExists_unify; idtac "EExists_unify."
+    | EExists; idtac "EExists."
+    ]; finish1'' custom_simpl hintdb
+  | |- _ => finish1'' custom_simpl hintdb
+  end.
+
+Tactic Notation "finish" "with" tactic(custom_simpl) "using" ident(hintdb) :=
+  finish' custom_simpl hintdb.
+
+Tactic Notation "finish" "with" tactic(custom_simpl) :=
+  finish with (custom_simpl) using core.
+
+Tactic Notation "finish" "using" ident(hintdb) :=
+  finish' fail hintdb.
+
+Tactic Notation "finish" :=
+  finish with fail.
+
+Tactic Notation "finish!" "with" tactic(custom_simpl) "using" ident(hintdb) :=
+  finish1' custom_simpl hintdb.
+
+Tactic Notation "finish!" "with" tactic(custom_simpl) :=
+  finish! with (custom_simpl) using core.
+
+Tactic Notation "finish!" "using" ident(hintdb) :=
+  finish1' fail hintdb.
+
+Tactic Notation "finish!" :=
+  finish! with fail.
+
+Tactic Notation "zsolve" "with" tactic(simpl_additions) "using" ident(hintdb) :=
+  autounfold with hintdb in *;
+  progress ((try fastforward with simpl_additions);
+  try finish with (simpl_additions) using hintdb).
+
+Tactic Notation "zsolve" "with" tactic(simpl_additions) :=
+  progress ((try fastforward with simpl_additions);
+  try finish with (simpl_additions)).
+
+Tactic Notation "zsolve" "using" ident(hintdb) :=
+  zsolve with (fail) using hintdb.
+
+Tactic Notation "zsolve" :=
+  zsolve with fail.
+
+Tactic Notation "zsolve!" "with" tactic(simpl_additions) "using" ident(hintdb) :=
+  autounfold with hintdb in *;
+  progress ((try fastforward! with simpl_additions);
+  try finish! with (simpl_additions) using hintdb).
+
+Tactic Notation "zsolve!" "with" tactic(simpl_additions) :=
+  progress ((try fastforward! with simpl_additions);
+  try finish! with (simpl_additions)).
+
+Tactic Notation "zsolve!" "using" ident(hintdb) :=
+  zsolve! with (fail) using hintdb.
+
+Tactic Notation "zsolve!" :=
+  zsolve! with fail.
+
+Tactic Notation "zsolve!!" "with" tactic(simpl_additions) "using" ident(hintdb) :=
+  autounfold with nocore hintdb in *;
+  progress ((try fastforward!! with simpl_additions);
+  try finish! with (simpl_additions) using hintdb).
+
+Tactic Notation "zsolve!!" "with" tactic(simpl_additions) :=
+  progress ((try fastforward!! with simpl_additions);
+  try finish! with (simpl_additions)).
+
+Tactic Notation "zsolve!!" "using" ident(hintdb) :=
+  zsolve!! with (fail) using hintdb.
+
+Tactic Notation "zsolve!!" :=
+  zsolve!! with fail.
+
 (* A better way to deal with sem_cast_i2bool *)
 Lemma sem_cast_i2bool_of_bool : forall (b : bool),
   sem_cast_i2bool (Val.of_bool b) = Some (Val.of_bool b).

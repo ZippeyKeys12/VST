@@ -446,57 +446,51 @@ Module Alternate.
 
 (* Alternate proofs of these functions, using list solver *)
 
+Ltac str_simpl :=
+  first
+  [ cstring'; idtac "cstring'."
+  | cstring1; idtac "cstring1."
+  ].
+
 Lemma body_strlen: semax_body Vprog Gprog f_strlen strlen_spec.
 Proof.
 start_function.
 unfold cstring in *.
 rename s into ls.
-repeat step.
+forward.
 forward_loop  (EX i : Z,
   PROP (0 <= i < Zlength ls + 1)
   LOCAL (temp _str str; temp _i (Vptrofs (Ptrofs.repr i)))
   SEP (data_at sh (tarray tschar (Zlength ls + 1))
           (map Vbyte (ls ++ [Byte.zero])) str)).
-*
-repeat step.
-*
-repeat step.
+- Time zsolve.
+- Time zsolve! with str_simpl.
 Qed.
 
 Lemma body_strchr: semax_body Vprog Gprog f_strchr strchr_spec.
 Proof.
 start_function.
-forward.
 unfold cstring in *.
 rename s into ls.
-Intros.
+newstep.
 forward_loop (EX i : Z,
   PROP (0 <= i < Zlength ls + 1; Forall (fun d => d <> c) (sublist 0 i ls))
   LOCAL (temp _str str; temp _c (Vbyte c); temp _i (Vptrofs (Ptrofs.repr i)))
   SEP (data_at sh (tarray tschar (Zlength ls + 1))
           (map Vbyte (ls ++ [Byte.zero])) str)).
-- repeat step!.
+- Time zsolve.
 - Intros i.
   assert (Zlength (ls ++ [Byte.zero]) = Zlength ls + 1) by (autorewrite with sublist; auto).
-  forward. autorewrite with norm.
-  forward. fold_Vbyte.
-  forward_if (Znth i (ls ++ [Byte.zero]) <> c).
-
-  { forward. simpl.
-    Exists (offset_val i str).
+  repeat newstep.
+  fold_Vbyte.
+  { Exists (offset_val i str).
     entailer!.
     left. exists i. split3; auto. rewrite app_Znth1; auto. cstring. }
-  { forward.
-    entailer!. }
-  Intros.
-  forward_if.
-  { forward.
-    Exists nullval; rewrite !map_app; entailer!.
+  { Exists nullval; rewrite !map_app; entailer!.
     right. split; auto.
     assert (i = Zlength ls) by cstring.
     subst i.
     autorewrite with sublist in H2; auto. }
-  forward. (* entailer!. *)
   Exists (i+1); entailer!.
   assert (i <> Zlength ls) by cstring.
   split. lia.
@@ -510,7 +504,7 @@ Proof.
 start_function.
 unfold cstringn, cstring in *.
 rename sd into ld. rename ss into ls.
-repeat step.
+newstep.
 forward_loop (EX i : Z,
     PROP (0 <= i < Zlength ld + 1)
     LOCAL (temp _i (Vptrofs (Ptrofs.repr i)); temp _dest dest; temp _src src)
@@ -528,11 +522,11 @@ forward_loop (EX i : Z,
    data_at sh' (tarray tschar (Zlength ls + 1))
      (map Vbyte (ls ++ [Byte.zero])) src)).
 - (* before loop1 *)
-  repeat step.
+  Time zsolve.
 - (* loop1 body *)
-  repeat step.
+  zsolve!! with str_simpl.
 -
-  repeat step.
+  newstep.
   forward_loop (EX j : Z,
     PROP (0 <= j < Zlength ls + 1)
     LOCAL (temp _j (Vptrofs (Ptrofs.repr j)); temp _i (Vptrofs (Ptrofs.repr (Zlength ld)));
@@ -543,11 +537,12 @@ forward_loop (EX i : Z,
          data_at sh' (tarray tschar (Zlength ls + 1))
            (map Vbyte (ls ++ [Byte.zero])) src)).
   (* before loop2 *)
-  repeat step!.
+  zsolve.
   (* loop2 body and return *)
   {
-  repeat step!.
-  (* - list_prop_solve.
+  zsolve.
+  (* - list_prop_olv
+  all: newstep1.e.
   - list_solve.
   - fold_Vbyte. list_solve. *)
   }
@@ -558,7 +553,7 @@ Proof.
 start_function.
 unfold cstring in *.
 rename s1 into ls1. rename s2 into ls2.
-repeat step.
+repeat newstep.
 forward_loop (EX i : Z,
   PROP (0 <= i < Zlength ls1 + 1; 0 <= i < Zlength ls2 + 1;
         forall (j:Z), 0 <= j < i -> Znth j ls1 = Znth j ls2)
@@ -567,12 +562,12 @@ forward_loop (EX i : Z,
           (map Vbyte (ls1 ++ [Byte.zero])) str1;
        data_at sh2 (tarray tschar (Zlength ls2 + 1))
           (map Vbyte (ls2 ++ [Byte.zero])) str2)).
-- repeat step!.
-- repeat step!.
+- zsolve.
+- repeat newstep.
   rename x into i.
   forward_if (temp _t'1 (Val.of_bool (Z.eqb i (Zlength ls1) && Z.eqb i (Zlength ls2)))).
   (* these two parts are not much simplified *)
-  { repeat step!.
+  { zsolve!! with str_simpl.
     rewrite (proj2 (Z.eqb_eq _ _)) by auto.
     destruct (Int.eq (Int.repr (Byte.signed (Znth (Zlength ls1) (ls2 ++ [Byte.zero])))) (Int.repr 0)) eqn:Heqb;
     do_repr_inj Heqb. (* utilize this internal tactic *)
@@ -582,17 +577,19 @@ forward_loop (EX i : Z,
       auto.
   }
   {
-    repeat step!.
+    zsolve!.
     rewrite (proj2 (Z.eqb_neq _ _)) by cstring.
     auto.
   }
-  repeat step!.
-  { simpl. rewrite andb_true_iff in H4; destruct H4 as [Hi1 Hi2].
+  zsolve.
+  {
+    rewrite andb_true_iff in H4; destruct H4 as [Hi1 Hi2].
     rewrite Z.eqb_eq in Hi1, Hi2.
+    simplify.
     apply Znth_eq_ext. lia.
     intros. apply H3. lia.
   }
-  { simpl. intro. subst. lia. }
+  { simplify. intro. subst. lia. }
   (* { simpl. intro. subst. lia. } *)
   (* split too early here *)
   all : rewrite andb_false_iff in *; rewrite !Z.eqb_neq in *.
@@ -600,7 +597,7 @@ forward_loop (EX i : Z,
      Byte.signed (Znth i (ls2 ++ [Byte.zero]))) by lia.
   all : autorewrite with norm in HZnth.
   all: clear -Espec sh1 sh2 str1 ls1 str2 ls2 H H0 i H1 H2 H3 H4 HZnth.
-  Time all: list_solve.
+  Time all: zsolve.
   (* Finished transaction in 12.274 secs (12.187u,0.062s) (successful) *)
 Qed.
 
@@ -609,7 +606,7 @@ Proof.
 start_function.
 unfold cstring,cstringn in *.
 rename s into ls.
-repeat step.
+repeat newstep.
 forward_loop (EX i : Z,
   PROP (0 <= i < Zlength ls + 1)
   LOCAL (temp _i (Vptrofs (Ptrofs.repr i)); temp _dest dest; temp _src src)
@@ -617,9 +614,9 @@ forward_loop (EX i : Z,
         (map Vbyte (sublist 0 i ls) ++ repeat Vundef (Z.to_nat (n - i))) dest;
        data_at sh' (tarray tschar (Zlength ls + 1)) (map Vbyte (ls ++ [Byte.zero])) src)).
 -
-  repeat step.
+  zsolve.
 -
-  repeat step!.
+  Time zsolve.
   (* + fold_Vbyte. list_solve. *)
 Qed.
 

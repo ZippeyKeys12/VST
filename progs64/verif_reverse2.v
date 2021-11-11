@@ -135,10 +135,10 @@ destruct s2 as [ | h r].
    Intros. subst. contradiction.
  - unfold listrep at 2; fold listrep.
    Intros y.
-   forward. (* t = v->tail *)
-   forward. (* v->tail = w; *)
-   forward. (* w = v; *)
-   forward. (* v = t; *)
+   repeat newstep. (* t = v->tail *)
+    (* v->tail = w; *)
+    (* w = v; *)
+    (* v = t; *)
    (* At end of loop body; reestablish invariant *)
    entailer!.
    Exists (h::s1,r,v,y).

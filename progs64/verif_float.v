@@ -43,11 +43,5 @@ repeat match goal with |- context [field_offset ?A ?B ?C] =>
 end.
 normalize. cancel.
 }
-forward.
-forward.
-forward.
-forward.
-forward.
-forward.
-forward.
+fastforward.
 Qed.
