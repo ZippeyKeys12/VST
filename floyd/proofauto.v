@@ -247,6 +247,7 @@ Local Ltac ss' abc :=
   (*| match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."*)
   | EExists_unify; idtac "EExists_unify"
   | abc
+  | match goal with |- context[if _ then _ else _] => if_tac end; idtac "if_tac."
   ].
 
 Local Ltac ss'' abc :=
@@ -265,6 +266,7 @@ Local Ltac ss'' abc :=
   | EExists_unify; idtac "EExists_unify"
   | progress_entailer; idtac "progress_entailer."
   | match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."
+  | match goal with |- context[if _ then _ else _] => if_tac end; idtac "if_tac."
   ].
 
 Local Ltac ss''' abc :=
@@ -283,6 +285,7 @@ Local Ltac ss''' abc :=
   | EExists_unify; idtac "EExists_unify"
   | progress_entailer; idtac "progress_entailer."
   | match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."
+  | match goal with |- context[if _ then _ else _] => if_tac end; idtac "if_tac."
   ].
 
 Local Tactic Notation "ss" "with" tactic(custom_simpl) :=
@@ -295,87 +298,85 @@ Local Tactic Notation "ss!!" "with" tactic(custom_simpl) :=
   ss''' custom_simpl.
 
 Tactic Notation "fastforward" "with" tactic(custom_simpl) :=
-  progress repeat match goal with
+  progress (repeat match goal with
   | |- semax _ _ _ _ => progress repeat (ss with custom_simpl)
   | |- semax_body _ _ _ _ => start_function; idtac "start_function."
-  end.
+  end); simpl.
 
 Tactic Notation "fastforward" :=
   fastforward with fail.
 
 Tactic Notation "fastforward!" "with" tactic(custom_simpl) :=
-  progress repeat match goal with
+  progress (repeat match goal with
   | |- semax _ _ _ _ => progress repeat (ss! with custom_simpl)
   | |- semax_body _ _ _ _ => start_function; idtac "start_function."
-  end.
+  end); simpl.
 
 Tactic Notation "fastforward!" :=
   fastforward! with fail.
 
 Tactic Notation "fastforward!!" "with" tactic(custom_simpl) :=
-  progress repeat match goal with
+  progress (repeat match goal with
   | |- semax _ _ _ _ => progress repeat (ss!! with custom_simpl)
   | |- semax_body _ _ _ _ => start_function; idtac "start_function."
-  end.
+  end); simpl.
 
 Tactic Notation "fastforward!!" :=
   fastforward!! with fail.
 
-Local Ltac a :=
+Local Tactic Notation "smp" tactic(custom_simpl) "with" ident(hintdb) :=
   repeat first
-  [ progress simpl; idtac "simpl."
+  [(* progress simpl; idtac "simpl."
+  |*) progress custom_simpl
+  | progress autorewrite with hintdb; idtac "autorewrite with hintdb."
+  | progress autorewrite with hintdb in * |-; idtac "autorewrite with hintdb in * |-."
   | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
   | progress autorewrite with sublist; idtac "autorewrite with sublist."
   | progress autorewrite with norm; idtac "autorewrite with norm. (finish'')"
   ].
 
 Tactic Notation "simplify" "with" tactic(custom_simpl) :=
-  a; try custom_simpl;
+  smp custom_simpl with core;
   match goal with
   | |- context[if _ then _ else _] => if_tac; idtac "if_tac."
   | |- _ |-- _ => (progress_entailer; idtac "progress_entailer.") + (entailer; idtac "progress_entailer + entailer.")
   end;
-  a; try custom_simpl.
-
-Tactic Notation "simplify" :=
-  simplify with fail.
+  smp custom_simpl with core.
 
 Tactic Notation "simplify!" "with" tactic(custom_simpl) :=
-  repeat progress (a; try custom_simpl; (progress_entailer; idtac "progress_entailer.")).
+  repeat progress (smp custom_simpl with core; try custom_simpl; (progress_entailer; idtac "progress_entailer.")).
 
 Tactic Notation "simplify!" :=
   simplify! with fail.
 
 Local Ltac finish'' custom_simpl hintdb :=
-  try (intros; idtac "intros.");
-  (progress subst; idtac "subst.");
-  (progress simpl; idtac "simpl.");
+  try (progress intros; idtac "intros.");
+  (simplify with custom_simpl);
   match goal with
   | |- @derives mpred _ _ _ => solve [cancel]; idtac "solve [cancel]."
   | |- _ |-- _ => solve [entailer!]; idtac "solve [entailer!]."
   | |- _ =>
       first
-      [ rep_lia; idtac "rep_lia."
-      | Zlength_solve; idtac "Zlength_solve."
+      [ contradiction; idtac "contradiction."
+      | rep_lia; idtac "rep_lia."
       | list_solve; idtac "list_solve."
       | progress auto with hintdb; idtac "auto."
       ]
   end.
 
 Local Ltac finish1'' custom_simpl hintdb :=
-  try (intros; idtac "intros.");
-  (progress subst; idtac "subst.");
-  simplify;
+  try (progress intros; idtac "intros.");
+  simplify with (custom_simpl);
   match goal with
   | |- @derives mpred _ _ _ => solve [cancel]; idtac "solve [cancel]."
   | |- _ |-- _ => solve [entailer!]; idtac "solve [entailer!]."
   | |- _ =>
       first
-      [ rep_lia; idtac "rep_lia."
-      | Zlength_solve; idtac "Zlength_solve."
+      [ contradiction; idtac "contradiction."
+      | rep_lia; idtac "rep_lia."
       | list_solve; idtac "list_solve."
       | progress auto with hintdb; idtac "auto."
-      ]
+      ]; progress subst; idtac "subst."; finish'' custom_simpl hintdb
   end.
 
 Local Ltac finish' custom_simpl hintdb :=
