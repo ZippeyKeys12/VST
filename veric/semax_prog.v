@@ -66,7 +66,7 @@ intros id t ?.
 unfold make_tycontext, temp_types in H4.
 unfold make_tycontext_t in H4.
 set (f1 := fun param : ident * type => PTree.set (fst param) (snd param)) in *.
-set (f2 := fun (temp : ident * type) (tenv : PTree.t type) =>
+set (f2 := fun (temp : ident * type) (tenv : PTree.tree type) =>
             let (id, ty) := temp in PTree.set id ty tenv) in *.
 unfold Map.get, make_tenv.
 (***)
@@ -144,7 +144,7 @@ Proof.
 intros.
 hnf; intros.
 unfold make_tycontext_v, make_venv, Map.get.
-set (f := fun (var : ident * type) (venv : PTree.t type) =>
+set (f := fun (var : ident * type) (venv : PTree.tree type) =>
     let (id0, ty0) := var in PTree.set id0 ty0 venv).
 transitivity (option_map snd (ve' ! id) = Some ty).
 2:{ destruct (ve' ! id) as [[??]|]; simpl; split; intro.
@@ -511,8 +511,8 @@ Proof.
   rewrite <- TTL1; trivial.
 Qed.
 
-Lemma semax_func_cons: forall 
-     fs id f fsig cc (A: TypeTree) P Q NEP NEQ (V: varspecs) (G G': funspecs) {C: compspecs} ge b,
+Lemma semax_func_cons
+     fs id f fsig cc (A: TypeTree) P Q NEP NEQ (V: varspecs) (G G': funspecs) {C: compspecs} ge b :
   andb (id_in_list id (map (@fst _ _) G))
   (andb (negb (id_in_list id (map (@fst ident Clight.fundef) fs)))
     (semax_body_params_ok f)) = true ->
@@ -529,8 +529,7 @@ Lemma semax_func_cons: forall
   semax_func V G ge ((id, Internal f)::fs)
        ((id, mk_funspec fsig cc A P Q NEP NEQ)  :: G').
 Proof.
-intros until C.
-intros ge b H' COMPLETE Hvars Hcc Hb1 Hb2 SB [HfsG' [Hfs HG]].
+intros H' COMPLETE Hvars Hcc Hb1 Hb2 SB [HfsG' [Hfs HG]].
 apply andb_true_iff in H'.
 destruct H' as [Hin H'].
 apply andb_true_iff in H'.
@@ -544,7 +543,7 @@ split3.
 intros ge' H0 HGG n.
 specialize (HG _ H0 HGG).
 hnf in HG |- *. 
-intros v fsig cc' A' P' Q'.
+intros v fsig0 cc' A' P' Q'.
 apply derives_imp.
 clear n.
 intros n ?.
@@ -587,7 +586,7 @@ intros ts x.
 simpl in H1. specialize (H0 id); unfold fundef in H0; simpl in H0. rewrite Hb1 in H0; simpl in H0.
 pose proof (semax_func_cons_aux (Build_genv ge' cenv_cs) _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ H0 Hni HfsG' H1).
 destruct H2 as [H4' [H4 [H4a [H4b H4c]]]].
-subst A' fsig cc'.
+subst A' fsig0 cc'.
 apply JMeq_eq in H4b.
 apply JMeq_eq in H4c.
 subst P' Q'.
@@ -619,7 +618,7 @@ apply andp_left1.
 apply sepcon_derives; auto.
 apply andp_left2; trivial.
 * (***   Vptr b Ptrofs.zero <> v'  ********)
-apply (HG n v fsig cc' A' P' Q'); auto.
+apply (HG n v fsig0 cc' A' P' Q'); auto.
 destruct H1 as [id' [NEP' [NEQ' [? B]]]].
 simpl in H1. rewrite PTree.gsspec in H1.
 destruct (peq id' id); subst.
@@ -2302,13 +2301,9 @@ Proof.
 apply semax_func_app.
 + eapply semax_func_subsumption; [ | | apply SF1].
 - hnf; simpl. intuition.
-* rewrite PTree.gempty; trivial.
-* rewrite PTree.gempty. simpl; trivial.
 - intros. specialize (K1 id). eapply sub_option_trans. apply K1. trivial.
 + eapply semax_func_subsumption; [ | | apply SF2].
 - hnf; simpl. intuition.
-* rewrite PTree.gempty; trivial.
-* rewrite PTree.gempty. simpl; trivial.
 - intros. specialize (N1 id). eapply sub_option_trans. apply N1. trivial.
 + clear - SF1. eapply semax_func_length. apply SF1.
 Qed.
@@ -2444,7 +2439,7 @@ forall H V (VH:list_norepet (map fst V ++ map fst H)) i,
 Proof.
 induction H; intros.
 + rewrite make_tycontext_g_nilG_find_id.
-simpl; rewrite PTree.gleaf; trivial.
+simpl. trivial.
 + apply list_norepet_cut_middle in VH.
 remember ((make_tycontext_g V (a :: H)) ! i) as d; symmetry in Heqd; destruct d. 
 - apply make_tycontext_g_consG_elim in Heqd. destruct a as [j fs]; simpl in *. rewrite PTree.gsspec.

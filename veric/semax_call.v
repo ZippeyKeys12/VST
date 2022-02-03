@@ -837,15 +837,17 @@ Proof.
  subst; auto.
 Qed.
 
-Lemma xelements_app:
- forall A (rho: PTree.t A) i al bl,
-    PTree.xelements rho i al ++ bl = PTree.xelements rho i (al++bl).
+(*
+Lemma xelements'_app:
+ forall A (rho: PTree.tree' A) i al bl,
+    PTree.xelements' rho i al ++ bl = PTree.xelements' rho i (al++bl).
 Proof.
  induction rho; simpl; intros; auto.
  destruct o; simpl.
  rewrite IHrho1. simpl. rewrite IHrho2; auto.
  rewrite IHrho1. simpl. rewrite IHrho2; auto.
 Qed.
+*)
 
 Lemma PTree_elements_remove: forall {A} (T: PTree.tree A) i e,
   In e (PTree.elements (PTree.remove i T)) ->
@@ -1307,13 +1309,12 @@ intros.
 unfold closed_wrt_modvars.
 extensionality F.
 f_equal.
- extensionality i; unfold modifiedvars; simpl.
+ extensionality i; unfold modifiedvars, modifiedvars', insert_idset.
  unfold isSome, idset0, insert_idset; destruct ret; simpl; auto.
  destruct (ident_eq i0 i).
  subst. rewrite PTree.gss. apply prop_ext; split; auto.
  rewrite PTree.gso by auto. rewrite PTree.gempty.
  apply prop_ext; split ;intro; try contradiction.
- rewrite PTree.gempty. auto.
 Qed.
 
 Lemma assert_safe_jmupd_for_external_call {Espec psi curf vx ret ret0 tx k z' m'}
@@ -1385,7 +1386,7 @@ destruct k; try contradiction.
   split. eapply step_skip_call; eauto. hnf; auto. auto. auto.
 Qed.
 
-Lemma semax_call_external: forall
+Lemma semax_call_external
  (CS : compspecs) (Espec : OracleKind) (Delta : tycontext)
  (A : TypeTree)
  (P : forall ts : list Type,  (dependent_type_functor_rec ts (ArgsTT A)) mpred)
@@ -1417,16 +1418,15 @@ Lemma semax_call_external: forall
 (* (H16' : type_of_fundef ff =
        Tfunction (type_of_params (fst fsig)) (snd fsig) cc)*)
  (TC8 : tc_vals (fst fsig) args)
- (Hargs : Datatypes.length (fst fsig) = Datatypes.length args),
- let ctl := Kcall ret curf vx tx k : cont in
- forall (HR : (ALL rho' : environ,
+ (Hargs : Datatypes.length (fst fsig) = Datatypes.length args)
+ (ctl := Kcall ret curf vx tx k : cont)
+ (HR : (ALL rho' : environ,
       |> ! ((EX old : val,
              substopt ret (`old) F rho' *
              maybe_retval (Q ts x) (snd fsig) ret rho') >=>
-            own.bupd (RA_normal R rho'))) (m_phi jm)),
- jsafeN OK_spec psi (level jm) ora (Callstate ff args ctl) jm.
+            own.bupd (RA_normal R rho'))) (m_phi jm))
+ : jsafeN OK_spec psi (level jm) ora (Callstate ff args ctl) jm.
 Proof.
-intros.
 destruct TC3 as [TC3 TC3'].
 rename H5 into H15.
 unfold believe_external in H15.
@@ -1435,7 +1435,7 @@ destruct ff; try contradiction H15.
 
 destruct H15 as [[H5 H15] Hretty]. hnf in H5.
 destruct H5 as [H5 [H5' [Eef Hinline]]]. subst c.
-inversion H5. destruct fsig0 as [params retty].
+inversion H5. destruct fsig as [params retty].
 injection H2; clear H2; intros H8 H7. subst t0.
 rename t into tys. subst rho.
 destruct (age1 jm) as  [jm' |] eqn:Hage.
@@ -2283,8 +2283,8 @@ unfold k at 1 in H; clearbody k;
 induction ctl; try discriminate; eauto.
 Qed.
 
-Lemma semax_call_aux2:
- forall (CS : compspecs) (Espec : OracleKind) (Delta : tycontext)
+Lemma semax_call_aux2
+  (CS : compspecs) (Espec : OracleKind) (Delta : tycontext)
   (A : TypeTree)
   (P : forall ts : list Type,
      _functor (dependent_type_functor_rec ts (ArgsTT A)) mpred)
@@ -2322,26 +2322,24 @@ Lemma semax_call_aux2:
   (H17 : list_norepet (map fst (fn_params f) ++ map fst (fn_temps f)))
   (H17' : list_norepet (map fst (fn_vars f)))
   (H18 : fst fsig = map snd (fst (fn_funsig f)) /\
-      snd fsig = snd (fn_funsig f) (*/\ list_norepet (map fst (fst fsig))*)),
-forall vx tx k rho
+      snd fsig = snd (fn_funsig f) (*/\ list_norepet (map fst (fst fsig))*))
+  vx tx k rho
   (H0 : rho = construct_rho (filter_genv psi) vx tx)
   (H1 : app_pred (|> rguard Espec psi Delta curf (frame_ret_assert R F0) k)
        (level (m_phi jm)))
-  (TC3 : guard_environ Delta curf rho),
-app_pred
-  (!! closed_wrt_modvars (fn_body f) (fun _ : environ => F0 rho * F rho) &&
-   rguard Espec psi (func_tycontext' f Delta) f
-     (frame_ret_assert
-        (frame_ret_assert (function_body_ret_assert (fn_return f) (Q ts x))
-           (stackframe_of' cenv_cs f)) (fun _ : environ => F0 rho * F rho))
-     (Kcall ret curf vx tx k)) (level jmx).
+  (TC3 : guard_environ Delta curf rho)
+  : app_pred
+      (!! closed_wrt_modvars (fn_body f) (fun _ : environ => F0 rho * F rho) &&
+       rguard Espec psi (func_tycontext' f Delta) f
+         (frame_ret_assert
+            (frame_ret_assert (function_body_ret_assert (fn_return f) (Q ts x))
+                              (stackframe_of' cenv_cs f)) (fun _ : environ => F0 rho * F rho))
+         (Kcall ret curf vx tx k)) (level jmx).
 Proof.
-intros.
 pose proof I.
 assert (LATER : laterR (level (m_phi jm)) (level (m_phi jmx))). {
   apply laterR_level'. apply age_laterR. apply age_jm_phi. auto.
 }
-rename fsig0 into fsig.
 set (ctl := Kcall ret curf vx tx k) in *.
 do 2 pose proof I.
  split.
@@ -2512,7 +2510,7 @@ apply guard_fallthrough_return; auto.
           clear - H.
           apply derives_refl'.
           apply H. intros. destruct (ident_eq i i0).
-          subst; left; hnf; simpl. unfold insert_idset. rewrite PTree.gss; auto.
+          subst; left. red. unfold modifiedvars', insert_idset. rewrite PTree.gss; hnf; auto.
           right; unfold Map.get; simpl; unfold make_tenv; simpl.
           rewrite PTree.gso; auto.
         +
