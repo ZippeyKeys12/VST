@@ -551,10 +551,10 @@ forward_loop (EX i : Z,
   forward_if (temp _t'1 (Val.of_bool (Z.eqb i (Zlength ls1) && Z.eqb i (Zlength ls2)))).
   (* these two parts are not much simplified *)
   { forward. entailer!. cstring1.
-    rewrite (proj2 (Z.eqb_eq _ _)) by reflexivity.
+    rewrite Z.eqb_refl. simpl andb.
     destruct (Int.eq (Int.repr (Byte.signed (Znth (Zlength ls1) (ls2 ++ [Byte.zero])))) (Int.repr 0)) eqn:Heqb;
     do_repr_inj Heqb. (* utilize this internal tactic *)
-    - ltac2:(simpl_plain_goal ()). cbn.
+    - simpl.
       rewrite (proj2 (Z.eqb_eq _ _)) by cstring.
       finish.
     - rewrite (proj2 (Z.eqb_neq _ _)) by cstring.
@@ -566,8 +566,6 @@ forward_loop (EX i : Z,
     finish.
   }
   zsolve.
-  (* { simpl. intro. subst. lia. } *)
-  (* split too early here *)
   assert (HZnth: Byte.signed (Znth i (ls1 ++ [Byte.zero])) =
      Byte.signed (Znth i (ls2 ++ [Byte.zero]))) by lia.
   finish.
