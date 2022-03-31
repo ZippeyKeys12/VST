@@ -49,6 +49,10 @@ Require VST.msl.wand_frame.
 Require VST.msl.wandQ_frame.
 Require VST.floyd.linking.
 
+From Ltac2 Require Import Ltac2 Message.
+Set Default Proof Mode "Classic".
+Set Ltac2 Backtrace.
+
 (*funspec scope is the default, so remains open.
   User who wnt ot use old funspecs should 
   "Require Import Require Import VST.floyd.Funspec_old_Notation."
@@ -223,106 +227,144 @@ Tactic Notation "info_step!" :=
   | list_solve; idtac "list_solve."
   ].
 
-Ltac newstep :=
-  try (progress Intros; idtac "Intros.");
-  try (let x := fresh "x" in Intros x; idtac "Intros x.");
+Ltac2 mutable zn_debug := true.
+
+Ltac2 zn_log (msg : string) :=
+  match zn_debug with
+  | true => print (of_string msg)
+  | false => ()
+  end.
+
+Ltac ex_intros :=
+  lazymatch goal with
+  | |- semax _ ?x _ _ =>
+    lazymatch x with
+    | context [EX exname, _] =>
+      let name := fresh exname in Intros name
+    end
+  | |- EX exname, _ |-- _ =>
+    let name := fresh exname in Intros name
+  end.
+
+Ltac2 newstep () :=
+  try (progress ltac1:(Intros); zn_log "Intros.");
+  try (ltac1:(ex_intros); zn_log "ex_intros.");
   first
-  [ forward; idtac "forward."
-  | forward_if; idtac "forward_if."
-  | forward_call; idtac "forward_call."
+  [ ltac1:(forward); zn_log "forward."
+  | ltac1:(forward_if); zn_log "forward_if."
+  | ltac1:(forward_call); zn_log "forward_call."
   ].
 
-Local Ltac ss' abc :=
+Ltac newstep := ltac2:(newstep ()).
+
+Ltac zn_semax_pre_simpl := fail.
+Ltac zn_semax_post_simpl := fail.
+
+(* Performs a "single-step" for fastforward *)
+Ltac2 fastforward_ss () :=
   first
-  [ progress Intros; idtac "Intros."
-  | let x := fresh "x" in Intros x; idtac "Intros x."
-  | forward; idtac "forward."
-  | forward_if; idtac "forward_if."
-  | forward_call; idtac "forward_call."
-  | progress simpl_implicit; idtac "simpl_implicit."
-  | match goal with |- _ |-- EX _, _ => EExists end; idtac "EExists."
-  | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
-  | progress autorewrite with sublist; idtac "autorewrite with sublist."
-  | progress autorewrite with norm; idtac "autorewrite with norm."
+  [ progress ltac1:(Intros); zn_log "Intros."
+  | ltac1:(ex_intros); zn_log "ex_intros."
+  | progress ltac1:(simpl_implicit); zn_log "simpl_implicit."
+  | progress ltac1:(zn_semax_pre_simpl)
+  | lazy_match! goal with [ |- _ |-- EX _, _ ] => 
+    first
+    [ ltac1:(EExists_unify); zn_log "EExists_unify."
+    | ltac1:(EExists); zn_log "EExists."
+    ]
+    end
+  | ltac1:(forward); zn_log "forward."
+  | ltac1:(forward_if); zn_log "forward_if."
+  | ltac1:(forward_call); zn_log "forward_call."
+  | ltac1:(cstring1); zn_log "cstring1."
+  | ltac1:(progress_entailer); zn_log "progress_entailer."
+  | progress ltac1:(autorewrite with norm); zn_log "autorewrite with norm."
   (*| match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."*)
-  | EExists_unify; idtac "EExists_unify"
-  | abc
-  | match goal with |- context[if _ then _ else _] => if_tac end; idtac "if_tac."
+  | progress ltac1:(autorewrite with sublist in * |-); zn_log "autorewrite with sublist in * |-."
+  | progress ltac1:(autorewrite with sublist); zn_log "autorewrite with sublist."
+  | progress ltac1:(zn_semax_post_simpl)
+  (* | lazy_match! goal with [ |- context [if _ then _ else _] ] => ltac1:(if_tac) end; print (of_string "if_tac.") *)
   ].
 
-Local Ltac ss'' abc :=
+Ltac2 fastforward_ss' () :=
+  first
+  [ progress ltac1:(Intros); zn_log "Intros."
+  | ltac1:(ex_intros); zn_log "ex_intros."
+  | progress ltac1:(simpl_implicit); zn_log "simpl_implicit."
+  | progress ltac1:(zn_semax_pre_simpl)
+  | progress ltac1:(autorewrite with norm); zn_log "autorewrite with norm."
+  | progress ltac1:(autorewrite with sublist); zn_log "autorewrite with sublist."
+  | progress ltac1:(autorewrite with sublist in * |-); zn_log "autorewrite with sublist in * |-."
+  | lazy_match! goal with [ |- _ |-- EX _, _ ] => 
+    first
+    [ ltac1:(EExists_unify); zn_log "EExists_unify."
+    | ltac1:(EExists); zn_log "EExists."
+    ]
+    end
+  | ltac1:(cstring1); zn_log "cstring1."
+  | ltac1:(forward); zn_log "forward."
+  | ltac1:(forward_if); zn_log "forward_if."
+  | ltac1:(forward_call); zn_log "forward_call."
+  | ltac1:(progress_entailer); zn_log "progress_entailer."
+  (*| match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."*)
+  | progress ltac1:(zn_semax_post_simpl)
+  (* | lazy_match! goal with [ |- context [if _ then _ else _] ] => ltac1:(if_tac) end; print (of_string "if_tac.") *)
+  ].
+
+Ltac ss''' :=
   first
   [ progress Intros; idtac "Intros."
-  | let x := fresh "x" in Intros x; idtac "Intros x."
+  | lazymatch goal with
+    | |- semax _ (PROPx _ (LOCALx _ (SEPx ?X))) _ _=>
+      lazymatch X with
+      | context [EX X', _] =>
+        let x := fresh X' in Intros x
+      end
+    end
+  | progress simpl_implicit; idtac "simpl_implicit."
+  | zn_semax_pre_simpl
+  | progress autorewrite with sublist in * |-; idtac "autorewrite with sublist in * |-."
+  | progress autorewrite with sublist; idtac "autorewrite with sublist."
+  | progress autorewrite with norm; idtac "autorewrite with norm."
   | forward; idtac "forward."
   | forward_if; idtac "forward_if."
   | forward_call; idtac "forward_call."
-  | abc
-  | progress simpl_implicit; idtac "simpl_implicit."
-  | match goal with |- _ |-- EX _, _ => EExists end; idtac "EExists."
-  | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
-  | progress autorewrite with sublist; idtac "autorewrite with sublist."
-  | progress autorewrite with norm; idtac "autorewrite with norm."
   | EExists_unify; idtac "EExists_unify"
+  | match goal with |- _ |-- EX _, _ => EExists end; idtac "EExists."
   | progress_entailer; idtac "progress_entailer."
   | match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."
   | match goal with |- context[if _ then _ else _] => if_tac end; idtac "if_tac."
+  | zn_semax_post_simpl
   ].
 
-Local Ltac ss''' abc :=
-  first
-  [ progress Intros; idtac "Intros."
-  | let x := fresh "x" in Intros x; idtac "Intros x."
-  | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
-  | progress autorewrite with sublist; idtac "autorewrite with sublist."
-  | progress autorewrite with norm; idtac "autorewrite with norm."
-  | forward; idtac "forward."
-  | forward_if; idtac "forward_if."
-  | forward_call; idtac "forward_call."
-  | abc
-  | progress simpl_implicit; idtac "simpl_implicit."
-  | match goal with |- _ |-- EX _, _ => EExists end; idtac "EExists."
-  | EExists_unify; idtac "EExists_unify"
-  | progress_entailer; idtac "progress_entailer."
-  | match goal with |- ENTAIL _, _ |-- _ =>  go_lower end; idtac "go_lower."
-  | match goal with |- context[if _ then _ else _] => if_tac end; idtac "if_tac."
-  ].
+Ltac2 Type agro_lvl := [ Safe | Med | Slow ].
 
-Local Tactic Notation "ss" "with" tactic(custom_simpl) :=
-  ss' custom_simpl.
+Ltac2 simplstep (agro : agro_lvl) :=
+  match agro with
+  | Safe => fastforward_ss ()
+  | Med => fastforward_ss' ()
+  | Slow => ltac1:(ss''')
+  end.
 
-Local Tactic Notation "ss!" "with" tactic(custom_simpl) :=
-  ss'' custom_simpl.
+Ltac2 fastforward (agro : agro_lvl) :=
+  progress (
+    try (lazy_match! goal with
+    | [ |- semax_body _ _ _ _ ] =>
+      try (progress ltac1:(leaf_function); zn_log "leaf_function");
+      ltac1:(start_function); zn_log "start_function."
+    end);
+    repeat (lazy_match! goal with
+    | [ |- semax _ _ _ _ ] => simplstep agro
+    | [ |- _ ] => ltac1:(clear_MORE_POST)
+    end)
+  ).
 
-Local Tactic Notation "ss!!" "with" tactic(custom_simpl) :=
-  ss''' custom_simpl.
+(* Ltac2 Notation "fastforward" dbs(opt(seq("with", hintdb))) :=
+  fastforward' dbs. *)
 
-Tactic Notation "fastforward" "with" tactic(custom_simpl) :=
-  progress (repeat match goal with
-  | |- semax _ _ _ _ => progress repeat (ss with custom_simpl)
-  | |- semax_body _ _ _ _ => start_function; idtac "start_function."
-  end); simpl.
-
-Tactic Notation "fastforward" :=
-  fastforward with fail.
-
-Tactic Notation "fastforward!" "with" tactic(custom_simpl) :=
-  progress (repeat match goal with
-  | |- semax _ _ _ _ => progress repeat (ss! with custom_simpl)
-  | |- semax_body _ _ _ _ => start_function; idtac "start_function."
-  end); simpl.
-
-Tactic Notation "fastforward!" :=
-  fastforward! with fail.
-
-Tactic Notation "fastforward!!" "with" tactic(custom_simpl) :=
-  progress (repeat match goal with
-  | |- semax _ _ _ _ => progress repeat (ss!! with custom_simpl)
-  | |- semax_body _ _ _ _ => start_function; idtac "start_function."
-  end); simpl.
-
-Tactic Notation "fastforward!!" :=
-  fastforward!! with fail.
+Ltac fastforward := ltac2:(fastforward Safe).
+Tactic Notation "fastforward!" := ltac2:(fastforward Med).
+Tactic Notation "fastforward!!" := ltac2:(fastforward Slow).
 
 Local Tactic Notation "smp" tactic(custom_simpl) "with" ident(hintdb) :=
   repeat first
@@ -330,143 +372,258 @@ Local Tactic Notation "smp" tactic(custom_simpl) "with" ident(hintdb) :=
   |*) progress custom_simpl
   | progress autorewrite with hintdb; idtac "autorewrite with hintdb."
   | progress autorewrite with hintdb in * |-; idtac "autorewrite with hintdb in * |-."
-  | progress autorewrite with sublist in *|-; idtac "autorewrite with sublist in * |-."
+  | progress autorewrite with sublist in * |-; idtac "autorewrite with sublist in * |-."
   | progress autorewrite with sublist; idtac "autorewrite with sublist."
   | progress autorewrite with norm; idtac "autorewrite with norm. (finish'')"
   ].
 
-Tactic Notation "simplify" "with" tactic(custom_simpl) :=
-  smp custom_simpl with core;
-  match goal with
-  | |- context[if _ then _ else _] => if_tac; idtac "if_tac."
-  | |- _ |-- _ => (progress_entailer; idtac "progress_entailer.") + (entailer; idtac "progress_entailer + entailer.")
-  end;
-  smp custom_simpl with core.
+Ltac zn_pre_solve_simpl := fail.
+Ltac zn_retry_solve_simpl := fail.
+Ltac zn_fast_solve := fail.
+Ltac zn_slow_solve := fail.
+Ltac zn_entailer_solve := fail.
 
-Tactic Notation "simplify!" "with" tactic(custom_simpl) :=
-  repeat progress (smp custom_simpl with core; try custom_simpl; (progress_entailer; idtac "progress_entailer.")).
+Ltac inst_exists :=
+  repeat lazymatch goal with
+  | |- exists i : _, _ => eexists + exists i
+  end.
 
-Tactic Notation "simplify!" :=
-  simplify! with fail.
-
-Local Ltac finish'' custom_simpl hintdb :=
-  try (progress intros; idtac "intros.");
-  (simplify with custom_simpl);
-  match goal with
-  | |- @derives mpred _ _ _ => solve [cancel]; idtac "solve [cancel]."
-  | |- _ |-- _ => solve [entailer!]; idtac "solve [entailer!]."
-  | |- _ =>
-      first
-      [ contradiction; idtac "contradiction."
-      | rep_lia; idtac "rep_lia."
-      | list_solve; idtac "list_solve."
-      | progress auto with hintdb; idtac "auto."
+Ltac2 simpl_plain_goal () :=
+  repeat (first
+  [ progress intros; zn_log "intros."
+  | constructor; zn_log "constructor."
+  | progress ltac1:(simpl_implicit); zn_log "simpl_implicit."
+  | progress ltac1:(zn_pre_solve_simpl)
+  | progress ltac1:(inst_exists); zn_log "inst_exists."
+  | lazy_match! goal with
+    | [ _ : ?x = nullval |- _ ]=> subst x; zn_log "subst nullval."
+    | [ _ : nullval = ?x |- _ ] => subst x; zn_log "subst nullval."
+    | [ |- _ < _ < _ ] => first
+      [ ltac1:(rep_lia); zn_log "rep_lia."
+      | split; zn_log "split."; try (ltac1:(rep_lia); zn_log "rep_lia.")
       ]
-  end.
+    | [ |- _ <= _ < _ ] => first
+      [ ltac1:(rep_lia); zn_log "rep_lia."
+      | split; zn_log "split."; try (ltac1:(rep_lia); zn_log "rep_lia.")
+      ]
+    | [ |- _ < _ <= _ ] => first
+      [ ltac1:(rep_lia); zn_log "rep_lia."
+      | split; zn_log "split."; try (ltac1:(rep_lia); zn_log "rep_lia.")
+      ]
+    | [ |- _ <= _ <= _ ] => first
+      [ ltac1:(rep_lia); zn_log "rep_lia."
+      | split; zn_log "split."; try (ltac1:(rep_lia); zn_log "rep_lia.")
+      ]
+    end
+  | progress cbn; zn_log "cbn."
+  ]).
 
-Local Ltac finish1'' custom_simpl hintdb :=
-  try (progress intros; idtac "intros.");
-  simplify with (custom_simpl);
-  match goal with
-  | |- @derives mpred _ _ _ => solve [cancel]; idtac "solve [cancel]."
-  | |- _ |-- _ => solve [entailer!]; idtac "solve [entailer!]."
-  | |- _ =>
+Ltac2 finish_quick () :=
+  first
+  [ ltac1:(contradiction); zn_log "contradiction."
+  | discriminate; zn_log "discriminate."
+  | assumption; zn_log "assumption."
+  ].
+
+Ltac2 ez_solve () :=
+  first
+  [ ltac1:(contradiction); zn_log "contradiction."
+  | discriminate; zn_log "discriminate."
+  | assumption; zn_log "assumption."
+  | reflexivity; zn_log "reflexivity."
+  | ltac1:(cstring); zn_log "cstring."
+  | solve [auto]; zn_log "auto."
+  | solve [auto with valid_pointer]; zn_log "auto with valid_pointer."
+  | lazy_match! goal with
+    | [ |- context [field_compatible] ] => ()
+    | [ |- context [field_compatible0] ] => ()
+    end; solve [auto with field_compatible]; zn_log "auto with field_compatible."
+  | ltac1:(zn_fast_solve)
+  ].
+
+Ltac2 norm_plain () :=
+  repeat (first
+  [ progress (simpl_plain_goal ())
+  | progress ltac1:(zn_retry_solve_simpl)
+  | progress ltac1:(autorewrite with sublist in * |-); zn_log "autorewrite with sublist in * |-."
+  | progress ltac1:(autorewrite with norm sublist); zn_log "autorewrite with norm sublist."
+  | progress subst; zn_log "subst."
+  ]).
+
+Ltac2 rec finish_plain (fin : unit -> unit) :=
+  simpl_plain_goal ();
+  try (ez_solve ());
+  first
+  [ ltac1:(rep_lia); zn_log "rep_lia."
+  | ltac1:(cstring'); zn_log "cstring'."
+  | ltac1:(Zlength_solve); zn_log "Zlength_solve."
+  | ltac1:(computable); zn_log "computable."
+  | ltac1:(list_solve); zn_log "list_solve."
+  | ltac1:(zn_slow_solve)
+  | progress (norm_plain ()); fin ()
+  ].
+
+Ltac2 finish_false () :=
+  repeat (first
+  [ ltac1:(contradiction); zn_log "contradiction."
+  | discriminate; zn_log "discriminate."
+  | ltac1:(list_solve); zn_log "list_solve."
+  | progress subst; zn_log "subst."
+  ]).
+
+Ltac inst_EX :=
+  repeat lazymatch goal with
+  | |- _ |-- ?C =>
+    lazymatch C with
+    | context [EX x, _] =>
       first
-      [ contradiction; idtac "contradiction."
-      | rep_lia; idtac "rep_lia."
-      | list_solve; idtac "list_solve."
-      | progress auto with hintdb; idtac "auto."
-      ]; progress subst; idtac "subst."; finish'' custom_simpl hintdb
+      [ EExists_unify
+      | EExists + Exists x
+      ]
+    end
   end.
 
-Local Ltac finish' custom_simpl hintdb :=
-  try Intros;
-  lazymatch goal with
-  | |- _ |-- EX _, _ => first
-    [ EExists_unify; idtac "EExists_unify."
-    | EExists; idtac "EExists."
-    ]; finish'' custom_simpl hintdb
-  | |- _ => finish'' custom_simpl hintdb
-  end.
+Ltac2 simpl_entailer_goal () := Control.enter (fun () =>
+  repeat (first
+  [ progress ltac1:(Intros); zn_log "Intros."
+  | progress ltac1:(simpl_implicit); zn_log "simpl_implicit."
+  | progress ltac1:(zn_pre_solve_simpl)
+  | lazy_match! goal with
+    | [ _ : ?x = nullval |- _ ]=> subst x; zn_log "subst nullval."
+    | [ _ : nullval = ?x |- _ ] => subst x; zn_log "subst nullval."
+    | [ |- context [if _ then _ else _]] => ltac1:(if_tac); zn_log "if_tac."
+    | [ |- context [match ?expr _ with _ => _ end]] => destruct expr > [ | ]; zn_log "destruct match."
+    end
+  | ltac1:(ex_intros); zn_log "ex_intros."
+  | progress ltac1:(inst_EX); zn_log "inst_EX."
+  | ltac1:(cstring1); zn_log "cstring1."
+  | progress ltac1:(cancel); zn_log "cancel."
+  | progress ltac1:(autorewrite with sublist in * |-); zn_log "autorewrite with sublist in * |-."
+  | progress ltac1:(autorewrite with sublist); zn_log "autorewrite with sublist."
+  | progress ltac1:(autorewrite with norm); zn_log "autorewrite with norm."
+  | ltac1:(progress_entailer); zn_log "progress_entailer."
+  ])).
 
-Local Ltac finish1' custom_simpl hintdb :=
-  try Intros;
-  lazymatch goal with
-  | |- _ |-- EX _, _ => first
-    [ EExists_unify; idtac "EExists_unify."
-    | EExists; idtac "EExists."
-    ]; finish1'' custom_simpl hintdb
-  | |- _ => finish1'' custom_simpl hintdb
-  end.
+Ltac2 norm_entailer () := Control.enter (fun () =>
+  repeat (first
+  [ progress (simpl_entailer_goal ())
+  | progress ltac1:(zn_retry_solve_simpl)
+  ])).
 
-Tactic Notation "finish" "with" tactic(custom_simpl) "using" ident(hintdb) :=
-  finish' custom_simpl hintdb.
+Ltac2 rec finish_entailer (fin : unit -> unit) :=
+  simpl_entailer_goal ();
+  Control.enter (fun () =>
+  match! goal with
+  | [ |- @derives mpred _ _ _ ] => solve [ltac1:(cancel)]; zn_log "solve [cancel]."
+  | [ |- _ |-- _ ] =>
+    first
+    [ ltac1:(list_solve); zn_log "list_solve."
+    | ltac1:(zn_entailer_solve)
+    | lazy_match! goal with
+      | [ |- context [ _ |-- _ ] ] => progress (norm_entailer ()); finish_entailer fin
+      | [ |- _ ] => fin ()
+      end
+    ]
+  | [ |- _ ] => fin ()
+  end).
 
-Tactic Notation "finish" "with" tactic(custom_simpl) :=
-  finish with (custom_simpl) using core.
+Ltac2 mutable zn_decisive_values () : constr list := [
+  'true; 'false; 'nullval
+].
 
-Tactic Notation "finish" "using" ident(hintdb) :=
-  finish' fail hintdb.
+Ltac2 subst_decisives () := Control.enter (fun () =>
+  List.iter (fun c =>
+    repeat (
+      match! goal with
+      | [ h : ?x = ?y |- _ ] =>
+        match Constr.equal c x with
+        | true => ltac1:(y |- subst y) (Ltac1.of_constr y)
+        | false =>
+          match Constr.equal c y with
+          | true => ltac1:(x |- subst x) (Ltac1.of_constr x)
+          | false => fail
+          end
+        end
+      end
+    )
+  ) (zn_decisive_values ())).
 
-Tactic Notation "finish" :=
-  finish with fail.
+Ltac2 simpl_hyps () := Control.enter (fun () =>
+  repeat (
+    subst_decisives ();
+    lazy_match! goal with
+    | [ h : False |- _ ] =>
+      let h := Control.hyp h in
+      ltac1:(H |- contradiction H) (Ltac1.of_constr h); zn_log "contradiction H."
+    | [ h : _ /\ _ |- _ ] =>
+      (* Based on stdpp solution to bug: https://coq.inria.fr/bugs/show_bug.cgi?id=2901 *)
+      let h_1 := Fresh.in_goal ident:(H_1) in
+      let h_2 := Fresh.in_goal ident:(H_2) in
+      destruct h as [h_1 h_2]; try (clear h); zn_log "destruct and in H."
+    | [ h : _ \/ _ |- _ ] =>
+      let h' := Fresh.in_goal ident:(H') in
+      destruct h as [ h' | h' ]; try (clear h); zn_log "destruct or in H."
+    | [ h_1 : ?p -> ?q, h_2 : ?p |- _ ] =>
+      let h_1 := Control.hyp h_1 in
+      let h_2 := Control.hyp h_2 in
+      specialize ($h_1 $h_2); zn_log "specialize (H_1 H_2)."
+    | [ h : exists _, _ |- _ ] =>
+      let x := Fresh.in_goal ident:(x) in
+      destruct h as [x hx]; try (clear h); zn_log "destruct exists in H."
+    | [ h : andb _ _ = true |- _ ] => rewrite andb_true_iff in h; zn_log "rewrite andb_true_iff in H."
+    | [ h : andb _ _ = false |- _ ] => rewrite andb_false_iff in h; zn_log "rewrite andb_false_iff in H."
+    | [ h : orb _ _ = true |- _ ] => rewrite orb_true_iff in h; zn_log "rewrite orb_true_iff in H."
+    | [ h : orb _ _ = false |- _ ] => rewrite orb_false_iff in h; zn_log "rewrite orb_false_iff in H."
+    | [ h : context [Is_true] |- _ ] => rewrite Is_true_eq_true in h; zn_log "rewrite Is_true_eq_true in H."
+    | [ |- context [_ |-- _] ] => progress ltac1:(autorewrite with sublist in * |-); zn_log "autorewrite with * |-."
+    end
+  )).
 
-Tactic Notation "finish!" "with" tactic(custom_simpl) "using" ident(hintdb) :=
-  finish1' custom_simpl hintdb.
+Global Create HintDb zn_finish.
 
-Tactic Notation "finish!" "with" tactic(custom_simpl) :=
-  finish! with (custom_simpl) using core.
+Ltac2 rec finish_specialize (fin : unit -> unit) := Control.enter (
+  fun () => lazy_match! goal with
+  | [ |- False ] => finish_false ()
+  | [ |- ~ _ ] => unfold not; intros; finish_false ()
+  | [ |- _ <-> _ ] => split; zn_log "split."; fin ()
+  | [ |- _ /\ _ ] => split; zn_log "split."; fin ()
+  | [ |- _ \/ _ ] => zn_log "left + right."; first
+    [ left; fin ()
+    | right; fin ()
+    ]
+  | [ |- forall _, _ ] => intro; zn_log "intro."; fin ()
+  | [ |- exists _, _ ] => ltac1:(inst_exists); zn_log "inst_exists."; fin ()
+  | [ |- ?x = ?x ] => reflexivity; zn_log "reflexivity."
+  (* | [ |- context [if _ then _ else _]] => ltac1:(if_tac); zn_log "if_tac."; fin () *) (* TODO: Breaks entailment matching?! Maybe checking nesting? *)
+  | [ |- context [match ?expr _ with | _ => _ end]] => destruct expr > [ | ]; zn_log "destruct match."; fin ()
+  | [ |- context [_ |-- _] ] => finish_entailer fin
+  | [ |- semax _ _ _ _ ] => ltac1:(fail "Semax goal, try 'fastforward' first")
+  | [ |- _ ] => first
+    [ solve [auto with zn_finish]; zn_log "solve [auto with zn_finish]."
+    | finish_plain fin
+    ]
+  end).
 
-Tactic Notation "finish!" "using" ident(hintdb) :=
-  finish1' fail hintdb.
+Ltac2 rec finish () :=
+  simpl_hyps ();
+  finish_specialize finish.
 
-Tactic Notation "finish!" :=
-  finish! with fail.
+Ltac finish := ltac2:(finish ()).
 
-Tactic Notation "zsolve" "with" tactic(simpl_additions) "using" ident(hintdb) :=
-  autounfold with hintdb in *;
-  progress ((try fastforward with simpl_additions);
-  try finish with (simpl_additions) using hintdb).
+Ltac2 zsolve (agro : agro_lvl) :=
+  progress (
+    try (lazy_match! goal with
+    | [ |- semax _ _ _ _ ] => fastforward agro
+    end);
+    try (lazy_match! goal with
+    | [ |- semax _ _ _ _ ] => fail
+    | [ |- _ ] => finish ()
+    end)
+  ).
 
-Tactic Notation "zsolve" "with" tactic(simpl_additions) :=
-  progress ((try fastforward with simpl_additions);
-  try finish with (simpl_additions)).
-
-Tactic Notation "zsolve" "using" ident(hintdb) :=
-  zsolve with (fail) using hintdb.
-
-Tactic Notation "zsolve" :=
-  zsolve with fail.
-
-Tactic Notation "zsolve!" "with" tactic(simpl_additions) "using" ident(hintdb) :=
-  autounfold with hintdb in *;
-  progress ((try fastforward! with simpl_additions);
-  try finish! with (simpl_additions) using hintdb).
-
-Tactic Notation "zsolve!" "with" tactic(simpl_additions) :=
-  progress ((try fastforward! with simpl_additions);
-  try finish! with (simpl_additions)).
-
-Tactic Notation "zsolve!" "using" ident(hintdb) :=
-  zsolve! with (fail) using hintdb.
-
-Tactic Notation "zsolve!" :=
-  zsolve! with fail.
-
-Tactic Notation "zsolve!!" "with" tactic(simpl_additions) "using" ident(hintdb) :=
-  autounfold with nocore hintdb in *;
-  progress ((try fastforward!! with simpl_additions);
-  try finish! with (simpl_additions) using hintdb).
-
-Tactic Notation "zsolve!!" "with" tactic(simpl_additions) :=
-  progress ((try fastforward!! with simpl_additions);
-  try finish! with (simpl_additions)).
-
-Tactic Notation "zsolve!!" "using" ident(hintdb) :=
-  zsolve!! with (fail) using hintdb.
-
-Tactic Notation "zsolve!!" :=
-  zsolve!! with fail.
+Ltac zsolve := ltac2:(zsolve Safe).
+Tactic Notation "zsolve!" := ltac2:(zsolve Med).
+Tactic Notation "zsolve!!" := ltac2:(zsolve Slow).
 
 (* A better way to deal with sem_cast_i2bool *)
 Lemma sem_cast_i2bool_of_bool : forall (b : bool),

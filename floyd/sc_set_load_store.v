@@ -800,6 +800,147 @@ then use assert_PROP to prove an equality of the form" eq1
   end
  end.
 
+Ltac has_at_already_aux R p :=
+  lazymatch R with
+  | nil => fail
+  | ?R1::?R' =>
+    first
+    [ lazymatch R1 with
+      | data_at _ _ _ p => idtac
+      | field_at _ _ _ _ p => idtac
+      | data_at_ _ _ p => idtac
+      | field_at_ _ _ _ p => idtac
+      | memory_block _ _ p => idtac
+      end
+    | has_at_already_aux R' p
+    ]
+  end.
+
+Ltac has_at_already p :=
+  lazymatch goal with |- semax _ (PROPx _ (LOCALx _ (SEPx ?R))) _ _ =>
+    has_at_already_aux R p
+  end.
+
+Ltac handle_intros :=
+  try Intros;
+  repeat lazymatch goal with
+  | |- semax _ (PROPx _ (LOCALx _ (SEPx ?X))) _ _=>
+    lazymatch X with
+    | context [EX X', _] =>
+      let x := fresh X' in Intros x
+    end
+  end.
+
+Ltac find_unfold_mpred_aux P A p :=
+  lazymatch goal with
+  | |- ?k => idtac "goal: " k""
+  end;
+  first
+  [ idtac "1a: " A""; unfold A at 1; handle_intros; idtac "1b"; has_at_already p; idtac "1"
+  | idtac "2a: " A""; unfold A at 2; handle_intros; idtac "2b"; has_at_already p; idtac "2"
+  | unfold A at 3; handle_intros; has_at_already p; idtac "3"
+  | unfold A at 4; handle_intros; has_at_already p; idtac "4"
+  | unfold A at 5; handle_intros; has_at_already p; idtac "5"
+  | unfold A at 6; handle_intros; has_at_already p; idtac "6"
+  ];
+  lazymatch goal with
+  | |- ?X => idtac "XX: " X""
+  end.
+
+Ltac find_unfold_mpred_aux' P A p :=
+  idtac "A: " A" p: " p"";
+  lazymatch A with
+  | ?A' _ _ _ _ => find_unfold_mpred_aux' P A' p
+  | ?A' _ _ _ => find_unfold_mpred_aux' P A' p
+  | ?A' _ _ => find_unfold_mpred_aux' P A' p
+  | ?A' _ => find_unfold_mpred_aux' P A' p
+  | ?A' =>
+    lazymatch A' with
+    | data_at => fail
+    | field_at => fail
+    | data_at_ => fail
+    | field_at_ => fail
+    | memory_block => fail
+    | _ => find_unfold_mpred_aux P A' p
+    end
+  end.
+
+Ltac find_unfold_mpred_aux2 R1 p :=
+  lazymatch R1 with
+  (* | context [?A _ _ _ _ _ _ _ _ _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ _ _ _ _ _ _ _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ _ _ _ _ _ _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ _ _ _ _ _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ _ _ _ _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ _ _ _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ _ _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ _ p] => find_unfold_mpred_aux' A p
+  | context [?A _ p] => idtac "x: " R1" - " A""; find_unfold_mpred_aux' A p *)
+  | context [?A p] => find_unfold_mpred_aux' A A p
+  end.
+
+Ltac find_unfold_mpred R p :=
+  idtac "R: " R"";
+  lazymatch R with
+   | nil => fail
+   | ?R1 :: ?R' =>
+    first
+    [ find_unfold_mpred_aux2 R1 p
+    | find_unfold_mpred R' p
+    ]
+  end.
+
+Lemma check_unfold_lemma: forall {cs: compspecs} Delta e goal Q T1 T2 GV e_root efs lr p_full_from_e,
+  local2ptree Q = (T1, T2, nil, GV) ->
+  compute_nested_efield e = (e_root, efs, lr) ->
+  msubst_eval_lvalue Delta T1 T2 GV e = Some p_full_from_e ->
+  p_full_from_e = p_full_from_e /\ goal ->
+  goal.
+Proof.
+  intros.
+  destruct H2 as [? ?].
+  apply H3.
+Qed.
+
+Ltac check_unfold_mpred_for_at_aux Delta P Q R e :=
+  let T1 := fresh "T1" in evar (T1: PTree.t val);
+  let T2 := fresh "T2" in evar (T2: PTree.t (type * val));
+  let G := fresh "GV" in evar (G: option globals);
+  let LOCAL2PTREE := fresh "LOCAL2PTREE" in
+  assert (local2ptree Q = (T1, T2, nil, G)) as LOCAL2PTREE;
+  [subst T1 T2 G; prove_local2ptree |];
+  eapply (check_unfold_lemma Delta e);
+  [ exact LOCAL2PTREE
+  | reflexivity
+  | solve_msubst_eval_lvalue
+  | ];
+  lazymatch goal with
+  | |- offset_val _ ?p2 = offset_val _ ?p2 /\ _ =>
+    split;
+    [ reflexivity
+    | first
+      [ has_at_already_aux R p2; idtac "AA"
+      | find_unfold_mpred R p2
+      ]
+    ]
+  end;
+  clear T1 T2 G LOCAL2PTREE.
+
+Ltac check_unfold_mpred_for_at_aux2 Delta P Q R e :=
+  try lazymatch e with
+  | Ssequence ?e' _ => check_unfold_mpred_for_at_aux2 Delta P Q R e'
+  | Sset _ (Ecast ?e' _) => check_unfold_mpred_for_at_aux Delta P Q R e'
+  | Sset _ ?e' => check_unfold_mpred_for_at_aux Delta P Q R e'
+  | Sassign ?e' _ => check_unfold_mpred_for_at_aux Delta P Q R e'
+  end.
+
+Ltac check_unfold_mpred_for_at :=
+  lazymatch goal with
+  | |- semax ?Delta (PROPx ?P (LOCALx ?Q (SEPx ?R))) ?e _ =>
+    check_unfold_mpred_for_at_aux2 Delta P Q R e
+  end.
+
 Section SEMAX_PTREE.
 
 Context {cs: compspecs}.
