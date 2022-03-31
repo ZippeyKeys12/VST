@@ -49,7 +49,7 @@ Require VST.msl.wand_frame.
 Require VST.msl.wandQ_frame.
 Require VST.floyd.linking.
 
-From Ltac2 Require Import Ltac2 Message.
+From Ltac2 Require Import Ltac2.
 Set Default Proof Mode "Classic".
 Set Ltac2 Backtrace.
 
@@ -231,7 +231,7 @@ Ltac2 mutable zn_debug := true.
 
 Ltac2 zn_log (msg : string) :=
   match zn_debug with
-  | true => print (of_string msg)
+  | true => Message.print (Message.of_string msg)
   | false => ()
   end.
 
@@ -388,16 +388,127 @@ Ltac inst_exists :=
   | |- exists i : _, _ => eexists + exists i
   end.
 
+
+Ltac2 mutable zn_decisive_values () : constr list := [
+  'true; 'false; 'nullval
+].
+
+Ltac2 subst_decisives () := Control.enter (fun () =>
+  List.iter (fun c =>
+    repeat (
+      match! goal with
+      | [ h : ?x = ?y |- _ ] =>
+        match Constr.equal c x with
+        | true => ltac1:(y |- subst y) (Ltac1.of_constr y)
+        | false =>
+          match Constr.equal c y with
+          | true => ltac1:(x |- subst x) (Ltac1.of_constr x)
+          | false => fail
+          end
+        end
+      end
+    )
+  ) (zn_decisive_values ())).
+
+Local Ltac2 rec get_root (c : constr) :=
+  lazy_match! c with
+  | ?f _ => get_root f
+  | _ => c
+  end.
+
+Local Ltac2 f_equal_root () :=
+  lazy_match! goal with
+  | [ |- ?f _ _ _ _ _ _ = ?f _ _ _ _ _ _ ] => get_root f
+  | [ |- ?f _ _ _ _ _ = ?f _ _ _ _ _ ] => get_root f
+  | [ |- ?f _ _ _ _ = ?f _ _ _ _ ] => get_root f
+  | [ |- ?f _ _ _ = ?f _ _ _ ] => get_root f
+  | [ |- ?f _ _ = ?f _ _ ] => get_root f
+  | [ |- ?f _ = ?f _ ] => get_root f
+  end.
+
+Local Theorem Val_of_bool_inj : forall x y, Val.of_bool x = Val.of_bool y -> x = y.
+Proof.
+intros [] [] H; try discriminate; reflexivity.
+Qed.
+
+Ltac2 mutable zn_injective_functions () : (constr * constr) list :=
+  [ ('Val.of_bool, 'Val_of_bool_inj) ].
+
+Ltac2 f_equal_check () := Control.enter (fun () =>
+  let root := f_equal_root () in
+  if Constr.is_constructor root
+  then f_equal
+  else 
+    let injs := zn_injective_functions () in
+    match List.find_opt (fun (c, _) => Constr.equal c root) injs with
+    | Some _ => f_equal
+    | None => fail
+    end).
+
+Ltac2 check_args' (c : constr) (i : int) : bool :=
+  lazy_match! Constr.type c with
+  | _ -> _ -> _ -> _ -> _ -> _ -> _ => Int.equal i 6
+  | _ -> _ -> _ -> _ -> _ -> _ => Int.equal i 5
+  | _ -> _ -> _ -> _ -> _ => Int.equal i 4
+  | _ -> _ -> _ -> _ => Int.equal i 3
+  | _ -> _ -> _ => Int.equal i 2
+  | _ -> _ => Int.equal i 1
+  end.
+
+Ltac2 rec check_args_aux (t : constr) (i : int) : bool :=
+  if Int.lt i 0
+  then false
+  else
+    lazy_match! t with
+    | _ -> ?t' => check_args_aux t' (Int.sub i 1)
+    | _ => Int.equal i 0
+    end
+.
+
+Ltac2 check_args (c : constr) (i : int) : bool :=
+  check_args_aux (Constr.type c) i.
+
+Ltac2 inj_check () :=
+  if List.for_all (fun (c, p) =>
+    lazy_match! Constr.type p with
+    | forall x1 x2 x3 x4 x5 x6 y1 y2 y3 y4 y5 y6,
+        ?f x1 x2 x3 x4 x5 x6 = ?f y1 y2 y3 y4 y5 y6 ->
+        x1 = y1 /\ x2 = y2 /\ x3 = y3 /\ x4 = y4 /\ x5 = y5 /\ x6 = y6
+          => Bool.and (Constr.equal c (get_root f)) (check_args c 6)
+    | forall x1 x2 x3 x4 x5 y1 y2 y3 y4 y5,
+        ?f x1 x2 x3 x4 x5 = ?f y1 y2 y3 y4 y5 ->
+        x1 = y1 /\ x2 = y2 /\ x3 = y3 /\ x4 = y4 /\ x5 = y5
+          => Bool.and (Constr.equal c (get_root f)) (check_args c 5)
+    | forall x1 x2 x3 x4 y1 y2 y3 y4,
+        ?f x1 x2 x3 x4 = ?f y1 y2 y3 y4 ->
+        x1 = y1 /\ x2 = y2 /\ x3 = y3 /\ x4 = y4
+          => Bool.and (Constr.equal c (get_root f)) (check_args c 4)
+    | forall x1 x2 x3 y1 y2 y3,
+        ?f x1 x2 x3 = ?f y1 y2 y3 ->
+        x1 = y1 /\ x2 = y2 /\ x3 = y3
+          => Bool.and (Constr.equal c (get_root f)) (check_args c 3)
+    | forall x1 x2 y1 y2,
+        ?f x1 x2 = ?f y1 y2 ->
+        x1 = y1 /\ x2 = y2
+          => Bool.and (Constr.equal c (get_root f)) (check_args c 2)
+    | forall x y,
+        ?f x = ?f y ->
+        x = y
+          => Bool.and (Constr.equal c (get_root f)) (check_args c 1)
+    end
+  ) (zn_injective_functions ())
+  then ()
+  else fail.
+
 Ltac2 simpl_plain_goal () :=
   repeat (first
   [ progress intros; zn_log "intros."
   | constructor; zn_log "constructor."
   | progress ltac1:(simpl_implicit); zn_log "simpl_implicit."
+  | progress (subst_decisives ()); zn_log "subst_decisives."
   | progress ltac1:(zn_pre_solve_simpl)
   | progress ltac1:(inst_exists); zn_log "inst_exists."
   | lazy_match! goal with
-    | [ _ : ?x = nullval |- _ ]=> subst x; zn_log "subst nullval."
-    | [ _ : nullval = ?x |- _ ] => subst x; zn_log "subst nullval."
     | [ |- _ < _ < _ ] => first
       [ ltac1:(rep_lia); zn_log "rep_lia."
       | split; zn_log "split."; try (ltac1:(rep_lia); zn_log "rep_lia.")
@@ -487,10 +598,9 @@ Ltac2 simpl_entailer_goal () := Control.enter (fun () =>
   repeat (first
   [ progress ltac1:(Intros); zn_log "Intros."
   | progress ltac1:(simpl_implicit); zn_log "simpl_implicit."
+  | progress (subst_decisives ()); zn_log "subst_decisives."
   | progress ltac1:(zn_pre_solve_simpl)
   | lazy_match! goal with
-    | [ _ : ?x = nullval |- _ ]=> subst x; zn_log "subst nullval."
-    | [ _ : nullval = ?x |- _ ] => subst x; zn_log "subst nullval."
     | [ |- context [if _ then _ else _]] => ltac1:(if_tac); zn_log "if_tac."
     | [ |- context [match ?expr _ with _ => _ end]] => destruct expr > [ | ]; zn_log "destruct match."
     end
@@ -527,30 +637,9 @@ Ltac2 rec finish_entailer (fin : unit -> unit) :=
   | [ |- _ ] => fin ()
   end).
 
-Ltac2 mutable zn_decisive_values () : constr list := [
-  'true; 'false; 'nullval
-].
-
-Ltac2 subst_decisives () := Control.enter (fun () =>
-  List.iter (fun c =>
-    repeat (
-      match! goal with
-      | [ h : ?x = ?y |- _ ] =>
-        match Constr.equal c x with
-        | true => ltac1:(y |- subst y) (Ltac1.of_constr y)
-        | false =>
-          match Constr.equal c y with
-          | true => ltac1:(x |- subst x) (Ltac1.of_constr x)
-          | false => fail
-          end
-        end
-      end
-    )
-  ) (zn_decisive_values ())).
-
 Ltac2 simpl_hyps () := Control.enter (fun () =>
   repeat (
-    subst_decisives ();
+    try (progress (subst_decisives ()); zn_log "subst_decisives.");
     lazy_match! goal with
     | [ h : False |- _ ] =>
       let h := Control.hyp h in
@@ -585,7 +674,7 @@ Ltac2 rec finish_specialize (fin : unit -> unit) := Control.enter (
   fun () => lazy_match! goal with
   | [ |- False ] => finish_false ()
   | [ |- ~ _ ] => unfold not; intros; finish_false ()
-  | [ |- _ <-> _ ] => split; zn_log "split."; fin ()
+  | [ |- _ <-> _ ] => split; zn_log "split."; intro; zn_log "intro."; fin ()
   | [ |- _ /\ _ ] => split; zn_log "split."; fin ()
   | [ |- _ \/ _ ] => zn_log "left + right."; first
     [ left; fin ()
